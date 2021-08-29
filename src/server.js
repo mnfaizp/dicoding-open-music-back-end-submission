@@ -1,6 +1,9 @@
 require('dotenv').config();
 
 const Hapi = require('@hapi/hapi');
+const Jwt = require('@hapi/jwt');
+
+// exceptions
 const ClientError = require('./exceptions/ClientError');
 
 // songs plugin
@@ -19,10 +22,16 @@ const AuthenticationsService = require('./service/postgres/AuthenticationsServic
 const TokenManager = require('./tokenize/TokenManager');
 const AuthenticationsValidator = require('./validator/authentications');
 
+// playlists plugin
+const playlists = require('./api/playlists');
+const PlaylistsService = require('./service/postgres/PlaylistsService');
+const PlaylistsValidator = require('./validator/playlists');
+
 const init = async () => {
   const songService = new SongsService();
   const userService = new UsersService();
   const authenticationsService = new AuthenticationsService();
+  const playlistsService = new PlaylistsService();
 
   const server = Hapi.server({
     port: process.env.PORT,
@@ -32,6 +41,30 @@ const init = async () => {
         origin: ['*'],
       },
     },
+  });
+
+  // external plugin
+  await server.register([
+    {
+      plugin: Jwt,
+    },
+  ]);
+
+  // jwt strategy for authentication
+  server.auth.strategy('openmusic_jwt', 'jwt', {
+    keys: process.env.ACCESS_TOKEN_KEY,
+    verify: {
+      aud: false,
+      iss: false,
+      sub: false,
+      maxAgeSec: process.env.ACCESS_TOKEN_AGE,
+    },
+    validate: (artifacts) => ({
+      isValid: true,
+      credentials: {
+        id: artifacts.decoded.payload.id,
+      },
+    }),
   });
 
   await server.register([
@@ -58,6 +91,13 @@ const init = async () => {
         validator: AuthenticationsValidator,
       },
     },
+    {
+      plugin: playlists,
+      options: {
+        service: playlistsService,
+        validator: PlaylistsValidator,
+      },
+    },
   ]);
 
   await server.ext('onPreResponse', (reqeuest, h) => {
@@ -74,10 +114,15 @@ const init = async () => {
     }
 
     if (response instanceof Error) {
-      console.log(response);
+      console.log(response.message);
+      const { statusCode, payload } = response.output;
+      if (statusCode === 401) {
+        return h.response(payload).code(401);
+      }
+
       const newResponse = h.response({
         status: 'error',
-        message: 'Something wrong with the server',
+        message: response.message,
       });
       newResponse.code(500);
       return newResponse;
