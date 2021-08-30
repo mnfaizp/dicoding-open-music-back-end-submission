@@ -5,8 +5,9 @@ const AuthorizationError = require('../../exceptions/AuthorizationError');
 const InvariantError = require('../../exceptions/InvariantError');
 
 class PlaylistsService {
-  constructor() {
+  constructor(collaborationsService) {
     this.pool = new Pool();
+    this.collaborationsService = collaborationsService;
   }
 
   async addPlaylist({ name, owner }) {
@@ -25,10 +26,10 @@ class PlaylistsService {
     return result.rows[0].id;
   }
 
-  async getPlaylists(owner) {
+  async getPlaylists(userId) {
     const query = {
-      text: 'SELECT playlists.id, playlists.name, users.username FROM playlists INNER JOIN users ON playlists.owner = users.id WHERE playlists.owner = $1',
-      values: [owner],
+      text: 'SELECT playlists.id, playlists.name, users.username FROM playlists INNER JOIN users ON playlists.owner = users.id LEFT JOIN collaborations ON collaborations.playlist_id = playlists.id WHERE playlists.owner = $1 OR collaborations.user_id = $1 GROUP BY playlists.id, users.username',
+      values: [userId],
     };
     const result = await this.pool.query(query);
     return result.rows;
@@ -50,14 +51,14 @@ class PlaylistsService {
 
     const result = await this.pool.query(query);
 
-    if (result.rowCount === 0) {
+    if (!result.rowCount) {
       throw new NotFoundError('No playlists with such id');
     }
 
     const userId = result.rows[0].owner;
 
     if (userId !== owner) {
-      throw new AuthorizationError('You\'re not allowed to access this rseource');
+      throw new AuthorizationError('You\'re not allowed to access this resource');
     }
   }
 
@@ -97,6 +98,22 @@ class PlaylistsService {
 
     if (!result.rowCount) {
       throw new InvariantError('No song with such id');
+    }
+  }
+
+  async verifyPlaylistsAccess(playlistId, userId) {
+    try {
+      await this.verifyPlaylistsOwner({ id: playlistId, owner: userId });
+    } catch (error) {
+      if (error instanceof NotFoundError) {
+        throw error;
+      }
+
+      try {
+        await this.collaborationsService.verifyCollaboration(playlistId, userId);
+      } catch {
+        throw error;
+      }
     }
   }
 }

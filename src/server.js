@@ -27,11 +27,16 @@ const playlists = require('./api/playlists');
 const PlaylistsService = require('./service/postgres/PlaylistsService');
 const PlaylistsValidator = require('./validator/playlists');
 
+// collaborations plugin
+const collaborations = require('./api/collaborations');
+const CollaborationsService = require('./service/postgres/CollaborationsService');
+
 const init = async () => {
   const songService = new SongsService();
   const userService = new UsersService();
   const authenticationsService = new AuthenticationsService();
-  const playlistsService = new PlaylistsService();
+  const collaborationsService = new CollaborationsService();
+  const playlistsService = new PlaylistsService(collaborationsService);
 
   const server = Hapi.server({
     port: process.env.PORT,
@@ -98,6 +103,13 @@ const init = async () => {
         validator: PlaylistsValidator,
       },
     },
+    {
+      plugin: collaborations,
+      options: {
+        collaborationsService,
+        playlistsService,
+      },
+    },
   ]);
 
   await server.ext('onPreResponse', (reqeuest, h) => {
@@ -114,7 +126,6 @@ const init = async () => {
     }
 
     if (response instanceof Error) {
-      console.log(response.message);
       const { statusCode, payload } = response.output;
       if (statusCode === 401) {
         return h.response(payload).code(401);
@@ -122,7 +133,7 @@ const init = async () => {
 
       const newResponse = h.response({
         status: 'error',
-        message: response.message,
+        message: 'Something wrong with server',
       });
       newResponse.code(500);
       return newResponse;
