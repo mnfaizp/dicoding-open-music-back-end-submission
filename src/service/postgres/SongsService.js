@@ -14,11 +14,10 @@ class SongsService {
   }) {
     const id = `song-${nanoid(16)}`;
     const createdAt = new Date().toISOString();
-    const updatedAt = createdAt;
 
     const query = {
-      text: 'INSERT INTO songs (id, title, year, performer, genre, duration, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id',
-      values: [id, title, year, performer, genre, duration, createdAt, updatedAt],
+      text: 'INSERT INTO songs (id, title, year, performer, genre, duration, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $7) RETURNING id',
+      values: [id, title, year, performer, genre, duration, createdAt],
     };
 
     const result = await this.pool.query(query);

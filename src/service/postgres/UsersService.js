@@ -32,7 +32,7 @@ class UsersService {
     const query = { text: 'SELECT username FROM users WHERE username = $1', values: [username] };
     const result = await this.pool.query(query);
 
-    if (result.rowCount > 0) {
+    if (result.rowCount) {
       throw new InvariantError('User already exists. Username have been used');
     }
   }
